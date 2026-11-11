@@ -53,12 +53,12 @@ export class Director {
     this.maria.group.rotation.y = mr;
 
     const xs = this.children.map((c) => c.group.position.x);
-    const left = mx - (portrait ? 0.7 : 1.0);
+    const left = mx - (portrait ? 0.7 : 1.15);
     const right = Math.max(...xs) + (portrait ? 0.55 : 0.8);
     this.centerX = (left + right) / 2;
     const halfW = (right - left) / 2;
     const tanH = Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * aspect;
-    this.dist = Math.max(6.2, (halfW * 1.06) / tanH);
+    this.dist = Math.max(6.2, (halfW * 1.1) / tanH);
     this.portrait = portrait;
     this.focusX = this.focusTarget = this.centerX;
   }
@@ -93,7 +93,7 @@ export class Director {
     kid.hop(strength);
     kid.sing(Math.min(note.len * 0.9, 1.2));
     this._emitNote(kid, NOTE_COLORS[note.step]);
-    this.focusTarget = this.centerX + (kid.group.position.x - this.centerX) * 0.15;
+    this.focusTarget = this.centerX + (kid.group.position.x - this.centerX) * 0.08;
     this.punch = Math.max(this.punch, strength * 0.6);
   }
 
