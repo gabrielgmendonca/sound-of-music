@@ -70,7 +70,8 @@ it; nothing uses `setTimeout` for musical timing.
   never looks behind itself.
 - Renderer (set in `main.js`): sRGB output, ACES filmic tone mapping,
   PCFSoft shadow maps, pixel ratio capped at 2.
-- Mobile budget for the whole scene: ≤ ~150 draw calls, ≤ ~250k triangles.
+- Budget for the whole scene (raised after the first version ran smoothly on an
+  iPhone): ≤ ~220 draw calls, ≤ ~700k triangles (≈ 500k on phones via `lowPower`).
   Use `InstancedMesh` for anything repeated. No post-processing passes.
 - Modules must not touch files they don't own, must not add dependencies, and
   must not start timers of their own — they are driven by `update(dt, t)`.
@@ -149,7 +150,7 @@ Character = {
   `NOTE_COLORS[index]`.
 - `'oops'` is cute, never sad: wobble, eyes go wide/squint, quick recovery.
 - `'cheer'`: arms up, bouncing.
-- All meshes `castShadow = true`. ≤ ~14 draw calls and ≤ ~9k triangles per
+- All meshes `castShadow = true`. ≤ ~22 draw calls and ≤ ~32k triangles per
   character (merge static geometry where practical).
 
 ### `src/ui/hud.js` (+ `hud.css`, imported from the JS)
@@ -186,8 +187,11 @@ display type from system fonts, soft shadows.
 ## Song arrangement (lead)
 
 C major, 4/4, quarter = 1 beat, 116 BPM. Eight 8-beat lines (64 beats per
-chorus). Accompaniment is oom-pah: bass on 1 & 3, guitar chord on 2 & 4.
-Chords per bar: C C | G7 G7 | C C | F F | C F | D7 G | E7 Am | F·G7 C.
+chorus). Chords per bar: C C | Dm G7 | C C | F F | C F | D7 G | E7 Am | F·G7 C.
+Round 1 is fingerpicked guitar, with bass and accordion joining halfway;
+round 2 is a strummed folk pattern with walking upright bass and accordion
+pad; a glockenspiel answers the long notes. Backing notes get a few ms of
+seeded timing and velocity drift so nothing is machine-perfect.
 
 ## Verification
 
@@ -217,3 +221,14 @@ Chords per bar: C C | G7 G7 | C C | F F | C F | D7 G | E7 Am | F·G7 C.
 - Instrument bus levels reduced by ~40% so the master compressor idles
   (measured output: peak 0.68, RMS 0.18).
 - Rank labels softened to Superb! / Lovely! / Encore!.
+
+## Second pass (owner feedback)
+
+- Interface localised: PT-BR by default (`src/i18n.js`), `?lang=en` for English.
+- Arrangement rewritten (see "Song arrangement"); guitar rebuilt as a
+  Karplus-Strong string with body resonances and round-robin variants; new
+  `accordion` and `guitarMute` instruments; plucked upright bass.
+- Environment and characters rebuilt at much higher detail (≈ 455k and ≈ 240k
+  triangles). Verified ~60 fps in headless desktop Chrome only — still needs a
+  check on a real phone. If it struggles there, the cheapest cuts are the hair
+  resolution in `characters.js` and instance counts in `environment.js`.

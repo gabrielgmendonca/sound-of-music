@@ -20,9 +20,12 @@ npm run dev        # prints a Local and a Network URL
 
 Edit `src/config.js`:
 
-- `GIFT` — title, recipient name, birthday message, signature.
+- `GIFT` — title, salutation, birthday message, signature.
 - `GAME` — tempo, how forgiving the timing is, `inputOffset` if taps feel
   early/late on a particular device (e.g. Bluetooth speakers).
+
+The interface is in Portuguese (Brazil) by default; add `?lang=en` to the URL
+for English.
 
 ## How it is built
 
