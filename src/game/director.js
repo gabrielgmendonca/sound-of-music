@@ -67,8 +67,17 @@ export class Director {
 
   // ── Conductor reactions ────────────────────────────────────────────────
 
-  onBeat(i) {
-    this.env.beat(i % 4 === 0 ? 1 : 0.5);
+  onBeat(i, meter = 4) {
+    const inBar = i % meter;
+    this.env.beat(inBar === 0 ? 1 : 0.5);
+    if (meter === 3) {
+      // Waltz: she leans into the "one" and strums two and three; the
+      // children sway one after another, a little wave along the row.
+      if (inBar === 0) this.maria.beat();
+      else this.maria.strum?.();
+      this.children.forEach((c, k) => { if ((i + k) % 3 === 0) c.beat(); });
+      return;
+    }
     if (i % 2 === 1) this.maria.strum?.();
     else this.maria.beat();
     this.children.forEach((c, k) => { if ((i + k) % 2 === 0) c.beat(); });

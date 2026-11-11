@@ -13,7 +13,6 @@ export const GIFT = {
 };
 
 export const GAME = {
-  bpm: 116,
   // Judgment windows, in seconds either side of the note.
   perfectWindow: 0.075,
   goodWindow: 0.16,

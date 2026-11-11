@@ -28,11 +28,12 @@ The MIT License above covers the original source code, procedural artwork and
 interface text in this repository. It does NOT cover, and grants no rights in,
 the following:
 
-1. The musical composition "Do-Re-Mi" (music by Richard Rodgers, lyrics by
-   Oscar Hammerstein II) and the film and stage musical "The Sound of Music".
-   These belong to their respective rights holders. The note data in
-   src/song/chart.js is a private, non-commercial fan arrangement of that
-   melody, made as a personal birthday gift. No lyrics and no recordings are
+1. The musical compositions "Do-Re-Mi", "Edelweiss" and "My Favorite Things"
+   (music by Richard Rodgers, lyrics by Oscar Hammerstein II) and the film and
+   stage musical "The Sound of Music". These belong to their respective rights
+   holders. The note data in src/song/ (doremi.js, edelweiss.js, favorite.js)
+   is a private, non-commercial fan arrangement of those melodies, made as a
+   personal birthday gift. No lyrics and no recordings are
    included. Anyone wishing to reuse this project beyond private, personal
    enjoyment must remove or replace the song data or obtain their own licence
    from the rights holders.

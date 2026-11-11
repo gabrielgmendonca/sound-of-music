@@ -16,8 +16,26 @@ const STRINGS = {
     statMiss: 'Perdidas',
     statCombo: 'Maior combo',
     replay: 'Jogar de novo',
+    menu: 'Outras músicas',
+    choose: 'Escolha uma música',
     ranks: { superb: 'Maravilhoso!', ok: 'Que lindo!', try: 'Bis!' },
-    rounds: { listen: 'Rodada 1 · Escute', sing: 'Rodada 2 · Cante', echo: 'Rodada 3 · Eco', finale: 'Grande final' },
+    stages: {
+      doremi: {
+        name: 'Dó-Ré-Mi',
+        sub: 'Manhã na colina',
+        rounds: { listen: 'Rodada 1 · Escute', sing: 'Rodada 2 · Cante', echo: 'Rodada 3 · Eco', finale: 'Grande final' },
+      },
+      edelweiss: {
+        name: 'Edelweiss',
+        sub: 'Valsa ao pôr do sol',
+        rounds: { listen: 'Rodada 1 · Valse', sing: 'Rodada 2 · Cante', finale: 'Grande final' },
+      },
+      favorite: {
+        name: 'Coisas Favoritas',
+        sub: 'Noite de estrelas',
+        rounds: { listen: 'Rodada 1 · Escute', sing: 'Rodada 2 · Cante', echo: 'Rodada 3 · Eco', finale: 'Grande final' },
+      },
+    },
     prompts: {
       howTo: 'Toque na tela quando a bolinha chegar ao anel',
       listen: 'Ela canta — você toca nas bolinhas!',
@@ -26,6 +44,9 @@ const STRINGS = {
       yourTurn: 'Sua vez!',
       listenShort: 'Escute…',
       finale: 'Todos juntos — subindo a escala!',
+      waltz: 'É uma valsa: ela canta, você toca no “um” — um, dois, três…',
+      onceMore: 'Mais uma vez, todos juntos!',
+      major: 'Agora em tom maior — todos juntos!',
     },
   },
   en: {
@@ -42,8 +63,26 @@ const STRINGS = {
     statMiss: 'Missed',
     statCombo: 'Best combo',
     replay: 'Play again',
+    menu: 'Other songs',
+    choose: 'Pick a song',
     ranks: { superb: 'Superb!', ok: 'Lovely!', try: 'Encore!' },
-    rounds: { listen: 'Round 1 · Listen', sing: 'Round 2 · Sing', echo: 'Round 3 · Echo', finale: 'Finale' },
+    stages: {
+      doremi: {
+        name: 'Do-Re-Mi',
+        sub: 'Morning on the hill',
+        rounds: { listen: 'Round 1 · Listen', sing: 'Round 2 · Sing', echo: 'Round 3 · Echo', finale: 'Finale' },
+      },
+      edelweiss: {
+        name: 'Edelweiss',
+        sub: 'A waltz at sunset',
+        rounds: { listen: 'Round 1 · Waltz', sing: 'Round 2 · Sing', finale: 'Finale' },
+      },
+      favorite: {
+        name: 'Favorite Things',
+        sub: 'A night full of stars',
+        rounds: { listen: 'Round 1 · Listen', sing: 'Round 2 · Sing', echo: 'Round 3 · Echo', finale: 'Finale' },
+      },
+    },
     prompts: {
       howTo: 'Tap anywhere when a bubble reaches the ring',
       listen: 'She sings — you tap the bubbles!',
@@ -52,6 +91,9 @@ const STRINGS = {
       yourTurn: 'Your turn!',
       listenShort: 'Listen…',
       finale: 'All together — up the scale!',
+      waltz: 'It’s a waltz: she sings, you tap the “one” — one, two, three…',
+      onceMore: 'Once more, all together!',
+      major: 'Now in a major key — all together!',
     },
   },
 };

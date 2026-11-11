@@ -45,7 +45,10 @@ index.html
 src/
   main.js               bootstrap: renderer, resize, input, game state machine   [lead]
   config.js             gift text, tuning, palette, stage layout                 [lead]
-  song/chart.js         melody, sections, tap targets, accompaniment             [lead]
+  song/index.js         stage list: song + meadow mood per stage                 [lead]
+  song/kit.js           shared arranger toolkit (patterns, beats → seconds)      [lead]
+  song/doremi.js, edelweiss.js, favorite.js   one song each: melody, rounds,
+                        tap targets, accompaniment                               [lead]
   game/conductor.js     audio-clock sequencer + tap judgment                     [lead]
   game/director.js      camera, wiring events -> characters/HUD/environment      [lead]
   audio/engine.js       Web Audio instruments + sfx                              [subagent: sonnet]
@@ -184,7 +187,7 @@ swallow game taps except on its own buttons (`pointer-events: none` on
 containers). Respect safe-area insets. Storybook look: cream paper, rounded
 display type from system fonts, soft shadows.
 
-## Song arrangement (lead)
+## Song arrangements (lead)
 
 C major, 4/4, quarter = 1 beat, 116 BPM. Eight 8-beat lines (64 beats per
 chorus). Chords per bar: C C | Dm G7 | C C | F F | C F | D7 G | E7 Am | F·G7 C.
@@ -232,3 +235,31 @@ seeded timing and velocity drift so nothing is machine-perfect.
   triangles). Verified ~60 fps in headless desktop Chrome only — still needs a
   check on a real phone. If it struggles there, the cheapest cuts are the hair
   resolution in `characters.js` and instance counts in `environment.js`.
+
+## Third pass: three stages
+
+- The title card is now a stage picker (tap a song, or press 1–3; Enter/Space
+  starts the last one played). The results card gained "Other songs". The best
+  rank per stage is kept in `localStorage` and shown on the picker.
+- `song/chart.js` was split into `song/kit.js` (shared patterns, now including
+  3/4 waltz picking, strumming and bass) and one file per song. The Do-Re-Mi
+  chart is byte-for-byte what it was before the split.
+- `Conductor` takes its chart through `load(chart)`; charts carry `meter`, and
+  `onBeat(i, meter)` lets the cast sway in three for the waltzes.
+- `environment.setMood('day' | 'sunset' | 'night')` eases lights, sky, fog,
+  lake and the unlit clouds/birds to a time of day; night adds twinkling stars
+  in the sky shader. Same geometry, no extra draw calls.
+
+### Song arrangements, stages 2 and 3
+
+- **Edelweiss** — C major, 3/4, 108 BPM, sunset. Form A A′ B A′ (32 bars).
+  Round 1: she sings, the player taps the "one" of every bar. Round 2: the
+  player sings every note over a strummed oom-pah-pah. Finale: the last line
+  once more and a long final Do.
+- **My Favorite Things** — E minor, 3/4, 168 BPM, night. Only the 16-bar verse
+  is arranged (the "when the dog bites" bridge is left out). Round 1: tap the
+  "one". Round 2: sing. Round 3: echo in four-bar phrases. Finale: the verse
+  over E major chords, and the last leading note resolves up to a held Mi.
+- Verified as before: a bot played each stage start to finish in headless
+  Chrome (88/88, 132/132 and 95/95 notes, no console errors, ~60 fps) in
+  desktop, phone-portrait and phone-landscape sizes. Not yet heard by a human.

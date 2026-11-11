@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { GIFT, GAME, NOTE_COLORS } from './config.js';
 import { AudioEngine } from './audio/engine.js';
-import { buildChart } from './song/chart.js';
+import { SONGS, buildChart } from './song/index.js';
 import { Conductor } from './game/conductor.js';
 import { Director } from './game/director.js';
 import { createEnvironment } from './world/environment.js';
@@ -36,12 +36,24 @@ document.documentElement.lang = pickLocale();
 document.title = GIFT.title;
 const hud = createHUD(document.getElementById('hud'), text);
 const audio = new AudioEngine();
-const chart = buildChart(text);
 
 let state = 'title';
+let stage = SONGS[0]; // the song being played (or last played)
+const charts = new Map(); // stage id -> chart, built on first play
 
-const conductor = new Conductor(audio, chart, {
-  onBeat: (i) => director.onBeat(i),
+// Best rank per stage, kept on this device so the title screen can show it.
+const RANK_ORDER = ['try', 'ok', 'superb'];
+const BEST_KEY = 'do-re-mi-meadow.best';
+let best = {};
+try { best = JSON.parse(localStorage.getItem(BEST_KEY)) || {}; } catch { /* private mode etc. */ }
+function recordRank(id, rank) {
+  if (RANK_ORDER.indexOf(rank) <= RANK_ORDER.indexOf(best[id])) return;
+  best[id] = rank;
+  try { localStorage.setItem(BEST_KEY, JSON.stringify(best)); } catch { /* not saved; fine */ }
+}
+
+const conductor = new Conductor(audio, {
+  onBeat: (i, meter) => director.onBeat(i, meter),
   onAuto: (n) => director.onAuto(n),
   onHit: (n, kind) => {
     director.onHit(n, kind);
@@ -66,6 +78,7 @@ const conductor = new Conductor(audio, chart, {
   },
   onEnd: (r) => {
     state = 'results';
+    recordRank(stage.id, r.rank);
     hud.setVisible(false);
     hud.showResults({
       rank: r.rank,
@@ -78,25 +91,50 @@ const conductor = new Conductor(audio, chart, {
       salutation: GIFT.salutation,
       message: GIFT.message,
       signature: GIFT.signature,
-      onReplay: startGame,
+      onReplay: () => startGame(stage.id),
+      onMenu: showMenu,
     });
   },
 });
 
-async function startGame() {
+async function startGame(id) {
+  stage = SONGS.find((s) => s.id === id) || SONGS[0];
   await audio.unlock();
+  if (!charts.has(stage.id)) charts.set(stage.id, buildChart(stage.id, text));
   hud.hideTitle();
   hud.hideResults();
   hud.setVisible(true);
   hud.setCombo(0);
   hud.setProgress(0);
+  hud.showRound('');
   director.reset();
+  env.setMood(stage.mood);
+  conductor.load(charts.get(stage.id));
   conductor.start();
   state = 'playing';
 }
 
+function showMenu() {
+  state = 'title';
+  hud.hideResults();
+  director.reset();
+  hud.showTitle({
+    title: GIFT.title,
+    subtitle: GIFT.subtitle,
+    stages: SONGS.map((s) => ({
+      id: s.id,
+      name: text.stages[s.id].name,
+      sub: text.stages[s.id].sub,
+      color: s.color,
+      rank: best[s.id] || null,
+    })),
+    current: stage.id,
+    onStart: startGame,
+  });
+}
+
 hud.setVisible(false);
-hud.showTitle({ title: GIFT.title, subtitle: GIFT.subtitle, onStart: startGame });
+showMenu();
 
 // ── Input: one button. Tap anywhere, click, or Space. ─────────────────────
 
@@ -176,4 +214,4 @@ renderer.setAnimationLoop(() => {
 });
 
 // Handy for debugging from the console; harmless otherwise.
-window.__game = { conductor, director, audio, chart, hud, env };
+window.__game = { conductor, director, audio, hud, env, startGame, get chart() { return conductor.chart; } };

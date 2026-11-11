@@ -10,14 +10,20 @@ const LEAD_IN = 0.8; // silence before beat 0
 
 export class Conductor {
   /**
-   * handlers: onBeat(i), onAuto(note), onHit(note, kind), onMiss(note),
+   * handlers: onBeat(i, beatsPerBar), onAuto(note), onHit(note, kind), onMiss(note),
    *           onStray(), onCue(cue), onEnd(stats)
    */
-  constructor(audio, chart, handlers = {}) {
+  constructor(audio, handlers = {}) {
     this.audio = audio;
-    this.chart = chart;
     this.h = handlers;
     this.running = false;
+    this.chart = null;
+  }
+
+  /** Swap in a song. Call while stopped, before start(). */
+  load(chart) {
+    this.running = false;
+    this.chart = chart;
 
     // Everything that makes sound on its own, in time order.
     this.sounds = [
@@ -52,6 +58,7 @@ export class Conductor {
   }
 
   get progress() {
+    if (!this.chart) return 0;
     return Math.min(1, Math.max(0, this.songTime / this.chart.duration));
   }
 
@@ -81,7 +88,7 @@ export class Conductor {
     const beat = Math.floor(t / chart.spb);
     if (beat > this.lastBeat && t >= 0) {
       this.lastBeat = beat;
-      h.onBeat?.(beat);
+      h.onBeat?.(beat, chart.meter);
     }
 
     // 4. Targets that slipped by.

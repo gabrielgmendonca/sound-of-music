@@ -387,6 +387,7 @@ export function createEnvironment(scene, { lowPower = false } = {}) {
   const pick = (arr) => arr[Math.floor(rnd() * arr.length) % arr.length];
   const shared = { uTime: { value: 0 }, uBeat: { value: 0 } };
   const dummy = new THREE.Object3D();
+  const moodMats = {}; // unlit materials that setMood() has to tint by hand
 
   // Keep-out zones for characters' feet.
   const inStage = (x, z, m = 0) =>
@@ -445,6 +446,13 @@ export function createEnvironment(scene, { lowPower = false } = {}) {
     cGlow: { value: new THREE.Color('#ffd99a') },
     sunDir: { value: SUN_DIR_SKY.clone() },
   };
+  // Dome-only extras (the lake reflection does not use these).
+  const domeUniforms = {
+    ...skyUniforms,
+    cDisc: { value: new THREE.Color().setRGB(1.0, 0.97, 0.86) },
+    uStars: { value: 0 },
+    uTime: shared.uTime,
+  };
   const SKY_FUNCS = `
       uniform vec3 cZenith; uniform vec3 cUpper; uniform vec3 cMid; uniform vec3 cLow; uniform vec3 cHorizon; uniform vec3 cGlow; uniform vec3 sunDir;
       vec3 skyGrad(vec3 d) {
@@ -465,7 +473,7 @@ export function createEnvironment(scene, { lowPower = false } = {}) {
     depthTest: false,
     fog: false,
     side: THREE.BackSide,
-    uniforms: skyUniforms,
+    uniforms: domeUniforms,
     vertexShader: `
       varying vec3 vDir;
       void main() {
@@ -475,14 +483,24 @@ export function createEnvironment(scene, { lowPower = false } = {}) {
       }`,
     fragmentShader: `
       ${SKY_FUNCS}
+      uniform vec3 cDisc; uniform float uStars; uniform float uTime;
       varying vec3 vDir;
       void main() {
         vec3 d = normalize(vDir);
         vec3 col = skyGrad(d);
+        if (uStars > 0.001) {
+          // one possible star per cell of a grid wrapped around the dome
+          vec3 g = d * 80.0;
+          vec3 cell = floor(g);
+          float h = fract(sin(dot(cell, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+          float tw = 0.7 + 0.3 * sin(uTime * (1.5 + h * 3.0) + h * 90.0);
+          float star = step(0.982, h) * smoothstep(0.32, 0.04, length(fract(g) - 0.5));
+          col += vec3(0.86, 0.92, 1.0) * star * tw * uStars * (0.6 + 40.0 * (h - 0.982)) * smoothstep(0.03, 0.3, d.y);
+        }
         float s = dot(d, sunDir);
         float disc = smoothstep(0.99935, 0.99965, s);
-        col = mix(col, vec3(1.0, 0.97, 0.86) * 1.6, disc);
-        col += vec3(1.0, 0.9, 0.6) * pow(max(s, 0.0), 220.0) * 0.8;
+        col = mix(col, cDisc * 1.6, disc);
+        col += cDisc * vec3(1.0, 0.93, 0.7) * pow(max(s, 0.0), 220.0) * 0.8;
         col = mix(col, cHorizon, smoothstep(0.0, -0.08, d.y));
         col += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 160.0;
         gl_FragColor = vec4(col, 1.0);
@@ -1840,6 +1858,7 @@ export function createEnvironment(scene, { lowPower = false } = {}) {
       );
     };
     mat.customProgramCacheKey = () => 'cloud-v2';
+    moodMats.cloud = mat;
     cloudMesh = new THREE.InstancedMesh(puffGeo, mat, total);
     cloudMesh.frustumCulled = false;
     cloudMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -1886,6 +1905,7 @@ export function createEnvironment(scene, { lowPower = false } = {}) {
     });
     tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
     const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0.8, color: '#fffdfa' });
+    moodMats.wisp = mat;
     wispMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), mat, nW);
     wispMesh.frustumCulled = false;
     wispMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -2176,10 +2196,83 @@ export function createEnvironment(scene, { lowPower = false } = {}) {
     bVel += 9 * clamp(strength, 0, 2);
   }
 
+  // Mood: time of day ------------------------------------------------------------------------------------------
+  // Only lights, sky, fog and the few unlit materials change; the scene itself
+  // is the same meadow. Colours ease over a couple of seconds.
+  const MOODS = {
+    day: {
+      sun: '#ffe0ad', sunI: 2.9, hemiSky: '#bfdcff', hemiGround: '#b9c27e', hemiI: 1.6, amb: '#fff1dc', ambI: 0.55,
+      zenith: '#2f78d6', upper: '#5aa6e8', mid: '#9ccff2', low: '#cfe6f5', horizon: FOG_COLOR, glow: '#ffd99a',
+      disc: new THREE.Color().setRGB(1.0, 0.97, 0.86), cloud: '#ffffff', wisp: '#fffdfa', water: '#ffffff', fliers: '#ffffff', stars: 0,
+    },
+    sunset: {
+      sun: '#ffb37a', sunI: 2.6, hemiSky: '#ffc7b0', hemiGround: '#a08f6a', hemiI: 1.25, amb: '#ffd6bf', ambI: 0.5,
+      zenith: '#33509f', upper: '#6f7fc8', mid: '#e9a6a0', low: '#ffc58f', horizon: '#ffd2a6', glow: '#ff9a4d',
+      disc: '#ffd08a', cloud: '#ffd9c8', wisp: '#ffc2b0', water: '#dba890', fliers: '#d9b8a8', stars: 0,
+    },
+    night: {
+      sun: '#a9c0ff', sunI: 1.5, hemiSky: '#6f86d8', hemiGround: '#39466b', hemiI: 1.25, amb: '#aab4ff', ambI: 0.5,
+      zenith: '#070d2e', upper: '#131f5c', mid: '#2e3b86', low: '#5a5fa8', horizon: '#6a6aa6', glow: '#aab8ff',
+      disc: '#e6edff', cloud: '#6f78b0', wisp: '#5a639c', water: '#5a66a8', fliers: '#4a5078', stars: 1,
+    },
+  };
+  const MOOD_COLORS = ['sun', 'hemiSky', 'hemiGround', 'amb', 'zenith', 'upper', 'mid', 'low', 'horizon', 'glow', 'disc', 'cloud', 'wisp', 'water', 'fliers'];
+  const MOOD_NUMBERS = ['sunI', 'hemiI', 'ambI', 'stars'];
+  const moodNow = {};
+  const moodGoal = {};
+  for (const k of MOOD_COLORS) { moodNow[k] = new THREE.Color(MOODS.day[k]); moodGoal[k] = moodNow[k].clone(); }
+  for (const k of MOOD_NUMBERS) moodNow[k] = moodGoal[k] = MOODS.day[k];
+  const waterDeep = lakeMat.uniforms.cDeep.value.clone();
+  const waterShallow = lakeMat.uniforms.cShallow.value.clone();
+  let moodBlend = 1; // 1 = arrived
+
+  function applyMood() {
+    const m = moodNow;
+    sun.color.copy(m.sun); sun.intensity = m.sunI;
+    hemi.color.copy(m.hemiSky); hemi.groundColor.copy(m.hemiGround); hemi.intensity = m.hemiI;
+    ambient.color.copy(m.amb); ambient.intensity = m.ambI;
+    scene.fog.color.copy(m.horizon);
+    scene.background.copy(m.horizon);
+    // The lake holds its own copies of the sky colours for its reflection.
+    for (const u of [domeUniforms, lakeMat.uniforms]) {
+      u.cZenith.value.copy(m.zenith); u.cUpper.value.copy(m.upper); u.cMid.value.copy(m.mid);
+      u.cLow.value.copy(m.low); u.cHorizon.value.copy(m.horizon); u.cGlow.value.copy(m.glow);
+    }
+    domeUniforms.cDisc.value.copy(m.disc);
+    domeUniforms.uStars.value = m.stars;
+    lakeMat.uniforms.cDeep.value.copy(waterDeep).multiply(m.water);
+    lakeMat.uniforms.cShallow.value.copy(waterShallow).multiply(m.water);
+    moodMats.cloud?.color.copy(m.cloud);
+    moodMats.wisp?.color.copy(m.wisp);
+    birdMesh?.material.color.copy(m.fliers);
+    flyMesh?.material.color.copy(m.fliers);
+  }
+
+  /** 'day' | 'sunset' | 'night'. Eases there unless `instant`. */
+  function setMood(name, instant = false) {
+    const goal = MOODS[name] || MOODS.day;
+    for (const k of MOOD_COLORS) moodGoal[k].set(goal[k]);
+    for (const k of MOOD_NUMBERS) moodGoal[k] = goal[k];
+    moodBlend = 0;
+    if (instant) updateMood(1e3);
+  }
+
+  function updateMood(dt) {
+    if (moodBlend >= 1) return;
+    const k = 1 - Math.exp(-dt * 2.2);
+    moodBlend += (1 - moodBlend) * k;
+    if (moodBlend > 0.995) moodBlend = 1;
+    const a = moodBlend === 1 ? 1 : k;
+    for (const c of MOOD_COLORS) moodNow[c].lerp(moodGoal[c], a);
+    for (const n of MOOD_NUMBERS) moodNow[n] += (moodGoal[n] - moodNow[n]) * a;
+    applyMood();
+  }
+
   // Update -----------------------------------------------------------------------------------------------------
   function update(dt, t) {
     dt = clamp(dt || 0, 0, 0.1);
     shared.uTime.value = t;
+    updateMood(dt);
     // spring, sub-stepped for stability
     let rem = dt;
     while (rem > 1e-6) {
@@ -2204,5 +2297,5 @@ export function createEnvironment(scene, { lowPower = false } = {}) {
     updateCelebration(dt, t);
   }
 
-  return { update, beat, celebrate, sun };
+  return { update, beat, celebrate, setMood, sun };
 }

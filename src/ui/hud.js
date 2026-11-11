@@ -49,7 +49,8 @@ const TEMPLATE = `
     <div class="hud__orn" aria-hidden="true"><span>${NOTE_SINGLE_SVG}</span><span>${NOTE_SVG}</span><span>${NOTE_SINGLE_SVG}</span></div>
     <h1 class="hud__h1" data-ref="titleText"></h1>
     <p class="hud__sub" data-ref="subText"></p>
-    <button type="button" class="hud__btn hud__btn--red hud__start" data-ref="startBtn">Tap to begin</button>
+    <p class="hud__pick" data-ref="pick">Pick a song</p>
+    <div class="hud__stages" data-ref="stages"></div>
     <p class="hud__hint">Tap anywhere in time with the music</p>
   </div>
 </div>
@@ -72,7 +73,10 @@ const TEMPLATE = `
       <p class="hud__dear" data-ref="dear"></p>
       <p class="hud__msg" data-ref="msg"></p>
       <p class="hud__sig"><span data-ref="sig"></span><i>${HEART_SVG}</i></p>
-      <button type="button" class="hud__btn hud__btn--green hud__replay" data-ref="replayBtn"><i>${REPLAY_SVG}</i>Play again</button>
+      <div class="hud__ractions">
+        <button type="button" class="hud__btn hud__btn--green hud__replay" data-ref="replayBtn"><i>${REPLAY_SVG}</i>Play again</button>
+        <button type="button" class="hud__btn hud__btn--paper hud__menu" data-ref="menuBtn"><i>${NOTE_SVG}</i>Other songs</button>
+      </div>
     </div>
   </div>
 </div>
@@ -95,16 +99,16 @@ export function createHUD(root, text = {}) {
     if (el && value) el.textContent = value;
   };
   setText('.hud__combo-t', text.combo);
-  setText('[data-ref="startBtn"]', text.start);
+  setText('[data-ref="pick"]', text.choose);
   setText('.hud__hint', text.hint);
   [text.statPerfect, text.statGood, text.statMiss, text.statCombo].forEach((v, i) => {
     const b = root.querySelector('[data-ref="' + ['sPerfect', 'sGood', 'sMiss', 'sCombo'][i] + '"]');
     if (b && v && b.nextElementSibling) b.nextElementSibling.textContent = v;
   });
-  if (text.replay) {
-    const btn = root.querySelector('[data-ref="replayBtn"]');
-    if (btn && btn.lastChild && btn.lastChild.nodeType === 3) btn.lastChild.textContent = text.replay;
-  }
+  [['replayBtn', text.replay], ['menuBtn', text.menu]].forEach(([ref, label]) => {
+    const btn = root.querySelector('[data-ref="' + ref + '"]');
+    if (label && btn && btn.lastChild && btn.lastChild.nodeType === 3) btn.lastChild.textContent = label;
+  });
 
   const r = {};
   root.querySelectorAll('[data-ref]').forEach((el) => {
@@ -119,8 +123,9 @@ export function createHUD(root, text = {}) {
   const stop = (e) => e.stopPropagation();
 
   // Buttons must never double as game taps.
-  r.startBtn.addEventListener('pointerdown', stop);
+  r.stages.addEventListener('pointerdown', stop);
   r.replayBtn.addEventListener('pointerdown', stop);
+  r.menuBtn.addEventListener('pointerdown', stop);
   // While the results card is up, taps/scrolls on it are not game taps either.
   r.results.addEventListener('pointerdown', stop);
 
@@ -468,6 +473,11 @@ export function createHUD(root, text = {}) {
       titleCleanup = null;
     }
   }
+  /**
+   * stages: [{ id, name, sub, color, rank }] — one button each; `rank` is the
+   * best result so far ('superb' | 'ok' | 'try') or null. `current` is the
+   * stage Enter/Space starts. onStart(id) fires from a real click/key event.
+   */
   function showTitle(opts) {
     const o = opts || {};
     teardownTitle();
@@ -475,30 +485,61 @@ export function createHUD(root, text = {}) {
     r.subText.textContent = o.subtitle == null ? '' : String(o.subtitle);
     setVisible(false);
 
+    const stages = Array.isArray(o.stages) ? o.stages : [];
+    const current = stages.some((st) => st.id === o.current) ? o.current : stages[0] && stages[0].id;
+    r.stages.textContent = '';
+    stages.forEach((st, i) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'hud__stage' + (st.id === current ? ' is-current' : '');
+      btn.dataset.stage = st.id;
+      btn.style.setProperty('--c', st.color || '#d9483b');
+      const num = document.createElement('i');
+      num.className = 'hud__stage-n';
+      num.textContent = String(i + 1);
+      const label = document.createElement('span');
+      label.className = 'hud__stage-t';
+      const name = document.createElement('b');
+      name.textContent = st.name || '';
+      const sub = document.createElement('small');
+      sub.textContent = st.sub || '';
+      label.append(name, sub);
+      const badge = document.createElement('i');
+      badge.className = 'hud__stage-r';
+      if (BADGES[st.rank]) {
+        badge.dataset.rank = st.rank;
+        badge.innerHTML = BADGES[st.rank];
+      }
+      btn.append(num, label, badge);
+      r.stages.appendChild(btn);
+    });
+
     let fired = false;
-    const fire = () => {
-      if (fired) return;
+    const fire = (id) => {
+      if (fired || id == null) return;
       fired = true;
       teardownTitle();
-      if (typeof o.onStart === 'function') o.onStart();
+      if (typeof o.onStart === 'function') o.onStart(id);
+    };
+    const onClick = (e) => {
+      const btn = e.target.closest ? e.target.closest('.hud__stage') : null;
+      if (btn) fire(btn.dataset.stage);
     };
     const onKey = (e) => {
       if (e.repeat) return;
-      if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {
+      const n = Number(e.key);
+      if (n >= 1 && n <= stages.length) {
         e.preventDefault();
-        fire();
+        fire(stages[n - 1].id);
+      } else if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        fire(current);
       }
     };
-    const onPointerUp = (e) => {
-      if (e.pointerType === 'mouse' && e.button !== 0) return;
-      fire();
-    };
-    r.startBtn.addEventListener('click', fire);
-    window.addEventListener('pointerup', onPointerUp, true);
+    r.stages.addEventListener('click', onClick);
     window.addEventListener('keydown', onKey, true);
     titleCleanup = () => {
-      r.startBtn.removeEventListener('click', fire);
-      window.removeEventListener('pointerup', onPointerUp, true);
+      r.stages.removeEventListener('click', onClick);
       window.removeEventListener('keydown', onKey, true);
     };
 
@@ -542,12 +583,15 @@ export function createHUD(root, text = {}) {
   })();
 
   let replayHandler = null;
-  r.replayBtn.addEventListener('click', () => {
-    const fn = replayHandler;
+  let menuHandler = null;
+  const once = (get) => () => {
+    const fn = get();
     if (!fn) return;
-    replayHandler = null; // guard against double firing
+    replayHandler = menuHandler = null; // guard against double firing
     fn();
-  });
+  };
+  r.replayBtn.addEventListener('click', once(() => replayHandler));
+  r.menuBtn.addEventListener('click', once(() => menuHandler));
 
   function showResults(o) {
     o = o || {};
@@ -564,6 +608,8 @@ export function createHUD(root, text = {}) {
     r.msg.textContent = o.message == null ? '' : String(o.message);
     r.sig.textContent = o.signature == null ? '' : String(o.signature);
     replayHandler = typeof o.onReplay === 'function' ? o.onReplay : null;
+    menuHandler = typeof o.onMenu === 'function' ? o.onMenu : null;
+    r.menuBtn.style.display = menuHandler ? '' : 'none';
 
     setVisible(false);
     r.results.scrollTop = 0;
@@ -576,7 +622,7 @@ export function createHUD(root, text = {}) {
   function hideResults() {
     r.results.classList.remove('is-shown');
     r.confetti.classList.remove('is-on');
-    replayHandler = null;
+    replayHandler = menuHandler = null;
   }
 
   // Initial state

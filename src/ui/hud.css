@@ -220,18 +220,99 @@
   text-wrap: balance;
 }
 
-.hud__start {
-  margin-top: clamp(18px, 4vh, 28px);
+.hud .hud__pick {
+  margin-top: clamp(14px, 3vh, 22px);
+  font: 800 12px / 1.2 var(--font-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(47, 93, 58, 0.78);
+}
+
+/* stage picker: one paper ticket per song */
+.hud__stages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+}
+.hud__stage {
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  z-index: 1; /* above the card's dashed inner border */
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 58px;
+  padding: 7px 14px 7px 9px;
+  text-align: left;
+  font-family: var(--font-display);
+  color: var(--ink);
+  background: linear-gradient(180deg, #fffdf5, #fff3d2);
+  border: 2px solid color-mix(in srgb, var(--c) 55%, var(--paper-edge));
+  border-radius: 999px;
+  box-shadow: 0 4px 0 color-mix(in srgb, var(--c) 60%, #6b5a3a), 0 9px 14px rgba(40, 30, 10, 0.2);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.hud__stage:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--c) 60%, #6b5a3a), 0 4px 8px rgba(40, 30, 10, 0.2);
+}
+.hud__stage:focus-visible {
+  outline: 4px solid var(--gold);
+  outline-offset: 3px;
+}
+.hud__stage.is-current .hud__stage-n {
   animation: hud-pulse 1.8s ease-in-out infinite;
 }
-.hud__start::before {
-  content: "";
-  position: absolute;
-  inset: -9px;
-  border-radius: 999px;
-  border: 3px solid rgba(217, 72, 59, 0.55);
-  animation: hud-halo 1.8s ease-out infinite;
-  pointer-events: none;
+.hud__stage-n {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  font: 900 20px / 1 var(--font-display);
+  font-style: normal;
+  color: #fff;
+  background: var(--c);
+  box-shadow: 0 2px 0 rgba(255, 255, 255, 0.5) inset, 0 -3px 0 rgba(0, 0, 0, 0.14) inset;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.22);
+}
+.hud__stage-t {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hud__stage-t b {
+  font: 800 clamp(17px, 4.6vw, 20px) / 1.1 var(--font-display);
+  color: var(--forest);
+}
+.hud__stage-t small {
+  font: 700 clamp(12px, 3.3vw, 14px) / 1.2 var(--font-display);
+  color: rgba(63, 49, 37, 0.72);
+}
+.hud__stage-r {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  color: transparent;
+}
+.hud__stage-r[data-rank="superb"] {
+  color: var(--gold);
+  filter: drop-shadow(0 1px 0 #b98a17);
+}
+.hud__stage-r[data-rank="ok"] {
+  color: var(--forest);
+}
+.hud__stage-r[data-rank="try"] {
+  color: var(--red);
 }
 
 @keyframes hud-pulse {
@@ -241,16 +322,6 @@
   }
   50% {
     transform: scale(1.06);
-  }
-}
-@keyframes hud-halo {
-  0% {
-    transform: scale(0.92);
-    opacity: 0.9;
-  }
-  100% {
-    transform: scale(1.2);
-    opacity: 0;
   }
 }
 @keyframes hud-bob {
@@ -264,8 +335,7 @@
 }
 
 .hud .hud__hint {
-  /* clears the button's raised edge, halo and pulse */
-  margin-top: 26px;
+  margin-top: 16px;
   font: 700 clamp(13px, 3.4vw, 15px) / 1.3 var(--font-display);
   color: rgba(63, 49, 37, 0.74);
 }
@@ -856,9 +926,27 @@
   }
 }
 
-.hud__replay {
-  align-self: center;
+.hud__ractions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px 12px;
   margin-top: 12px;
+}
+.hud__btn--paper {
+  color: var(--forest);
+  text-shadow: none;
+  background: linear-gradient(180deg, #fffdf5, #fbeecb);
+  border-color: var(--paper-edge);
+  box-shadow: 0 6px 0 #cdb777, 0 12px 20px rgba(40, 30, 10, 0.25);
+}
+.hud__btn--paper:active {
+  box-shadow: 0 2px 0 #cdb777, 0 5px 10px rgba(40, 30, 10, 0.2);
+}
+.hud__ractions .hud__btn {
+  min-height: 52px;
+  padding: 0 24px;
+  font-size: clamp(16px, 4.3vw, 19px);
 }
 
 /* short landscape screens: two-column card */
@@ -881,12 +969,44 @@
   .hud__h1 {
     font-size: clamp(28px, 8vh, 40px);
   }
-  .hud__start {
-    min-height: 48px;
-    margin-top: 12px;
+  .hud__tcard {
+    width: min(100%, 720px);
+  }
+  .hud__sub {
+    margin-top: 4px;
+  }
+  .hud .hud__pick {
+    margin-top: 8px;
+  }
+  .hud__stages {
+    flex-direction: row;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .hud__stage {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 52px;
+    gap: 8px;
+    padding: 5px 8px 5px 6px;
+  }
+  .hud__stage-n {
+    width: 34px;
+    height: 34px;
+    font-size: 17px;
+  }
+  .hud__stage-t b {
+    font-size: 15px;
+  }
+  .hud__stage-t small {
+    font-size: 11px;
+  }
+  .hud__stage-r {
+    width: 20px;
+    height: 20px;
   }
   .hud .hud__hint {
-    margin-top: 20px;
+    margin-top: 10px;
   }
 
   .hud__rcard {
@@ -909,9 +1029,11 @@
   .hud__msg {
     font-size: 20px;
   }
-  .hud__replay {
+  .hud__ractions {
     margin-top: 6px;
-    min-height: 50px;
+  }
+  .hud__ractions .hud__btn {
+    min-height: 48px;
   }
 }
 
@@ -977,8 +1099,5 @@
   }
   .hud__confetti {
     display: none !important;
-  }
-  .hud__start::before {
-    display: none;
   }
 }

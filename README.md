@@ -10,7 +10,8 @@ npm install        # local to this folder; nothing global
 npm run dev        # prints a Local and a Network URL
 ```
 
-- Computer: open the Local URL. Click or press Space in time with the bubbles.
+- Computer: open the Local URL. Pick a song (or press 1–3), then click or
+  press Space in time with the bubbles.
 - Phone (same Wi-Fi): open the Network URL. Tap anywhere. Works in portrait
   and landscape; turn the ringer switch on and the volume up on iPhone.
 
@@ -21,8 +22,13 @@ npm run dev        # prints a Local and a Network URL
 Edit `src/config.js`:
 
 - `GIFT` — title, salutation, birthday message, signature.
-- `GAME` — tempo, how forgiving the timing is, `inputOffset` if taps feel
+- `GAME` — how forgiving the timing is, `inputOffset` if taps feel
   early/late on a particular device (e.g. Bluetooth speakers).
+
+Each stage is one song file in `src/song/` (`doremi.js`, `edelweiss.js`,
+`favorite.js`); its tempo is the `BPM` constant at the top. Stage names are in
+`src/i18n.js`, and the stage list (order, meadow mood, colour) is in
+`src/song/index.js`.
 
 The interface is in Portuguese (Brazil) by default; add `?lang=en` to the URL
 for English.
