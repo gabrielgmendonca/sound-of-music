@@ -2163,8 +2163,7 @@ function buildMariaBody(P) {
   ER.z = 0.295;
   const HR = gPt(-0.03, 0, 0.1); // palm centre, above the strings near the sound hole
   const SL = V(0.172, 0.355, 0);
-  const EL = V(0.3, 0.13, 0.04);
-  const HL = gPt(0.42, 0, -0.02);
+  const EL = V(0.29, 0.07, 0.11); // left elbow: low, a little forward, below the neck line
 
   const puff = () => {
     const g = new THREE.SphereGeometry(0.064, 18, 12);
@@ -2180,34 +2179,41 @@ function buildMariaBody(P) {
   };
   const sleeveR = (t) => lerp(0.046, 0.036, t);
 
-  // left arm: on the guitar neck
+  // left (fretting) arm: comes up from underneath the neck. Elbow hangs
+  // low and a little forward, wrist under the neck, thumb behind it and
+  // fingers curling up over the fretboard onto the strings.
   const rel = (v) => v.clone().sub(SL);
-  const wristL = EL.clone().lerp(HL, 0.62);
-  const aL = { cloth: [puff()], skin: [] };
-  aL.cloth.push(sweep([rel(SL), rel(SL.clone().lerp(EL, 0.5)), rel(EL), rel(EL.clone().lerp(wristL, 0.5)), rel(wristL)], { segs: 16, radial: 10, r: sleeveR, color: dress, capEnd: false }));
-  const cuffL = new THREE.TorusGeometry(0.034, 0.008, 6, 16);
-  cuffL.applyMatrix4(new THREE.Matrix4().compose(rel(wristL), new THREE.Quaternion().setFromUnitVectors(V(0, 0, 1), HL.clone().sub(EL).normalize()), V(1, 1, 1)));
-  aL.skin.push(paint(cuffL, WHITE));
   const neckC = gPt(0.42, 0, 0.034);
-  const na = V(Math.cos(gRot), Math.sin(gRot), 0);
-  const nu = V(-Math.sin(gRot), Math.cos(gRot), 0);
-  const nz = V(0, 0, 1);
-  const palmL = neckC.clone().addScaledVector(nu, 0.03).addScaledVector(nz, -0.04);
-  aL.skin.push(sweep([rel(wristL), rel(wristL.clone().lerp(palmL, 0.6))], { segs: 4, radial: 10, r: 0.028, color: skin }));
-  aL.skin.push(paint(place(new THREE.SphereGeometry(1, 14, 10), rel(palmL).toArray(), [0, 0, gRot], [0.04, 0.034, 0.024]), skin));
+  const na = V(Math.cos(gRot), Math.sin(gRot), 0); // along the neck
+  const nu = V(-Math.sin(gRot), Math.cos(gRot), 0); // neck "up" edge (bass side)
+  const nz = V(0, 0, 1); // out of the fretboard
+  const NPt = (a, u, z) => neckC.clone().addScaledVector(na, a).addScaledVector(nu, u).addScaledVector(nz, z);
+  const wristL = NPt(-0.012, -0.095, -0.012);
+  const palmL = NPt(0, -0.056, -0.004);
+  const aL = { cloth: [puff()], skin: [] };
+  aL.cloth.push(sweep([rel(SL), rel(SL.clone().lerp(EL, 0.5)).add(V(0.01, 0, 0)), rel(EL), rel(EL.clone().lerp(wristL, 0.5)), rel(wristL)], { segs: 18, radial: 10, r: sleeveR, color: dress, capEnd: false }));
+  const fdir = wristL.clone().sub(EL).normalize();
+  const cuffL = new THREE.TorusGeometry(0.034, 0.008, 6, 16);
+  cuffL.applyMatrix4(new THREE.Matrix4().compose(rel(wristL), new THREE.Quaternion().setFromUnitVectors(V(0, 0, 1), fdir), V(1, 1, 1)));
+  aL.skin.push(paint(cuffL, WHITE));
+  aL.skin.push(sweep([rel(wristL), rel(wristL.clone().lerp(palmL, 0.7))], { segs: 4, radial: 10, r: (t) => lerp(0.03, 0.026, t), color: skin }));
+  // palm: flat side facing the underside of the neck
+  const palm = new THREE.SphereGeometry(1, 14, 10);
+  palm.applyMatrix4(new THREE.Matrix4().makeBasis(na, nu, nz).scale(V(0.042, 0.02, 0.036)));
+  aL.skin.push(paint(palm.translate(...rel(palmL).toArray()), skin));
   for (let k = 0; k < 4; k++) {
     const off = (k - 1.5) * 0.019;
-    const base = neckC.clone().addScaledVector(na, off);
     aL.skin.push(
-      sweep([base.clone().addScaledVector(nu, 0.04).addScaledVector(nz, -0.03), base.clone().addScaledVector(nu, 0.038).addScaledVector(nz, 0.012), base.clone().addScaledVector(nu, 0.012).addScaledVector(nz, 0.03)].map(rel), {
-        segs: 6,
+      sweep([NPt(off, -0.044, 0.016), NPt(off, -0.03, 0.036), NPt(off * 1.05, -0.006, 0.038), NPt(off * 1.05, 0.004, 0.029)].map(rel), {
+        segs: 7,
         radial: 8,
-        r: 0.0085,
+        r: (t) => 0.0088 * (1 - 0.15 * t),
         color: skin,
       }),
     );
   }
-  aL.skin.push(sweep([palmL.clone().addScaledVector(na, -0.02), neckC.clone().addScaledVector(nu, -0.01).addScaledVector(nz, -0.035).addScaledVector(na, -0.01)].map(rel), { segs: 4, radial: 8, r: 0.01, color: skin }));
+  // thumb: behind the neck, pointing up along its back
+  aL.skin.push(sweep([NPt(-0.022, -0.05, -0.026), NPt(-0.02, -0.025, -0.041), NPt(-0.014, 0.004, -0.039)].map(rel), { segs: 5, radial: 8, r: (t) => 0.0105 * (1 - 0.15 * t), color: skin }));
 
   // right arm: upper + forearm (strums / waves)
   const dU = ER.clone().sub(SR);
