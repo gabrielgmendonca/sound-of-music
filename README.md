@@ -30,3 +30,13 @@ for English.
 ## How it is built
 
 See [docs/PLAN.md](docs/PLAN.md).
+
+## Hosting
+
+Every push to `main` is built and deployed to GitHub Pages by
+`.github/workflows/pages.yml`.
+
+## License
+
+Code and original artwork: MIT. The song and film are not covered — see the
+"Scope and third-party material" section of [LICENSE](LICENSE).

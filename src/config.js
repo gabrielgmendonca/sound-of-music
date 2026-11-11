@@ -6,10 +6,10 @@ export const GIFT = {
   title: 'Dó-Ré-Mi na Colina',
   subtitle: 'Uma surpresinha musical de aniversário',
   // The card shown after the song. Edit freely — e.g. salutation: 'Ana, meu amor,'
-  salutation: 'Meu amor,',
+  salutation: 'Querida,',
   message:
     'Feliz aniversário! Você enche os meus dias de música — aqui vão uma colina, uma canção e sete vozinhas cantando só para você.',
-  signature: 'Com todo o meu amor',
+  signature: 'Mil beijos',
 };
 
 export const GAME = {

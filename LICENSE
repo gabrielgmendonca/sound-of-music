@@ -1,0 +1,46 @@
+MIT License
+
+Copyright (c) 2026 Gabriel Mendonça
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+--------------------------------------------------------------------------------
+
+SCOPE AND THIRD-PARTY MATERIAL
+
+The MIT License above covers the original source code, procedural artwork and
+interface text in this repository. It does NOT cover, and grants no rights in,
+the following:
+
+1. The musical composition "Do-Re-Mi" (music by Richard Rodgers, lyrics by
+   Oscar Hammerstein II) and the film and stage musical "The Sound of Music".
+   These belong to their respective rights holders. The note data in
+   src/song/chart.js is a private, non-commercial fan arrangement of that
+   melody, made as a personal birthday gift. No lyrics and no recordings are
+   included. Anyone wishing to reuse this project beyond private, personal
+   enjoyment must remove or replace the song data or obtain their own licence
+   from the rights holders.
+
+2. three.js (https://threejs.org), bundled into the built site, which is
+   Copyright (c) 2010-2024 three.js authors and distributed under its own MIT
+   License.
+
+This project is not affiliated with, endorsed by, or sponsored by the owners of
+"The Sound of Music". All characters and scenery are original, stylised
+designs and are not likenesses of any performer.
