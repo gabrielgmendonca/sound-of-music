@@ -983,9 +983,10 @@ export class AudioEngine {
   _sfxMiss(out, t) {
     const r = new Rec(this._ctx, this._noise);
     const end = t + 0.4;
-    const o = r.osc('triangle', 392, t, end);
-    o.frequency.setValueAtTime(392, t);
-    o.frequency.exponentialRampToValueAtTime(220, t + 0.26);
+    // Pitched high enough to survive phone speakers, but brief and quiet.
+    const o = r.osc('triangle', 523, t, end);
+    o.frequency.setValueAtTime(523, t);
+    o.frequency.exponentialRampToValueAtTime(330, t + 0.22);
     const lfo = r.osc('sine', 16, t, end);
     const lg = r.gain(14);
     lfo.connect(lg);
@@ -993,9 +994,9 @@ export class AudioEngine {
     const lp = r.filter('lowpass', 1100, 0.5);
     const g = r.gain(0);
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.26, t + 0.015);
-    g.gain.setValueAtTime(0.26, t + 0.1);
-    g.gain.linearRampToValueAtTime(0, t + 0.33);
+    g.gain.linearRampToValueAtTime(0.2, t + 0.015);
+    g.gain.setValueAtTime(0.2, t + 0.08);
+    g.gain.linearRampToValueAtTime(0, t + 0.28);
     r.chain(o, lp, g, out);
     r.finish();
   }

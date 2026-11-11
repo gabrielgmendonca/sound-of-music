@@ -11,8 +11,13 @@ import { createHUD } from './ui/hud.js';
 import { strings, pickLocale } from './i18n.js';
 
 const canvas = document.getElementById('scene');
+// Phones get the same scene as desktop. Only clearly weak devices (or
+// `?quality=low`) get the lighter one; `?quality=high` forces the full one.
+const quality = new URLSearchParams(location.search).get('quality');
 const lowPower =
-  /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.hardwareConcurrency || 8) <= 4;
+  quality === 'low' ||
+  (quality !== 'high' && ((navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 3));
+let pixelRatioCap = 2;
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -50,6 +55,8 @@ const conductor = new Conductor(audio, chart, {
     hud.pulseTarget('miss');
     hud.showJudgment('miss');
     hud.setCombo(0);
+    // Guitar-Hero style, toned down: a dead-string "chk" under a soft droop.
+    audio.playNote('guitarMute', 50 + (n.step % 3), audio.now, 0.2, 0.7);
     audio.playSfx('miss');
   },
   onCue: (c) => {
@@ -123,7 +130,7 @@ document.addEventListener('visibilitychange', () => {
 function resize() {
   const w = window.innerWidth;
   const h = window.innerHeight;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, lowPower ? 1.5 : 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioCap));
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
@@ -135,8 +142,28 @@ resize();
 
 const clock = new THREE.Clock();
 const cueList = [];
+
+// Safety net for the full-detail scene: if frames run slow for a couple of
+// seconds, render at a lower resolution rather than stutter. Never steps up.
+let slowTime = 0;
+let fastTime = 0;
+function watchFrameRate(rawDt) {
+  if (document.hidden || rawDt > 0.25) return;
+  if (rawDt > 1 / 45) slowTime += rawDt;
+  else fastTime += rawDt;
+  if (fastTime > 4) slowTime = fastTime = 0;
+  if (slowTime > 1.5 && pixelRatioCap > 1) {
+    pixelRatioCap = Math.max(1, pixelRatioCap - 0.5);
+    slowTime = fastTime = 0;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioCap));
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+  }
+}
+
 renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const rawDt = clock.getDelta();
+  watchFrameRate(rawDt);
+  const dt = Math.min(rawDt, 0.05);
   const t = clock.elapsedTime;
   conductor.update();
   if (state === 'playing') {

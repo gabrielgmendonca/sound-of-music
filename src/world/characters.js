@@ -2144,7 +2144,7 @@ function buildMariaBody(P) {
   const gPos = V(-0.02, 0.14, 0.205);
   guitar.applyMatrix4(new THREE.Matrix4().compose(gPos, new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), gRot), V(1, 1, 1)));
   const gPt = (x, y, z) => V(x, y, z).applyAxisAngle(V(0, 0, 1), gRot).add(gPos);
-  const strapCurve = [gPt(0.19, 0, -0.04), V(0.17, 0.32, 0.12), V(0.16, 0.392, 0.05), V(0.14, 0.407, -0.04), V(0.1, 0.36, -0.125), V(-0.05, 0.2, -0.145), V(-0.2, 0.08, -0.13), V(-0.3, 0.03, 0.0), gPt(-0.3, 0, -0.03)];
+  const strapCurve = [gPt(0.19, 0, -0.04), V(0.15, 0.32, 0.13), V(0.115, 0.398, 0.06), V(0.105, 0.41, -0.03), V(0.1, 0.36, -0.125), V(-0.05, 0.2, -0.145), V(-0.18, 0.07, -0.13), V(-0.26, 0.02, 0.05), gPt(-0.3, 0, -0.03)];
   const strap = sweep(strapCurve, {
     segs: 70,
     radial: 6,
@@ -2156,8 +2156,12 @@ function buildMariaBody(P) {
 
   // arms
   const SR = V(-0.172, 0.355, 0);
-  const ER = V(-0.25, 0.14, 0.11);
-  const HR = gPt(-0.04, 0, 0.075);
+  // Strumming arm: elbow rests just outside the upper rim of the lower bout,
+  // in front of the top, so the forearm drapes over the rim onto the strings.
+  const boutC = gPt(-0.12, 0, 0);
+  const ER = boutC.clone().addScaledVector(V(-0.75, 0.66, 0).normalize(), 0.235);
+  ER.z = 0.295;
+  const HR = gPt(-0.03, 0, 0.1); // palm centre, above the strings near the sound hole
   const SL = V(0.172, 0.355, 0);
   const EL = V(0.3, 0.13, 0.04);
   const HL = gPt(0.42, 0, -0.02);
@@ -2211,16 +2215,25 @@ function buildMariaBody(P) {
   const dF = HR.clone().sub(ER);
   const LF = dF.length();
   const qU = new THREE.Quaternion().setFromUnitVectors(V(0, -1, 0), dU.normalize());
-  const qF = new THREE.Quaternion().setFromUnitVectors(V(0, -1, 0), dF.normalize());
+  // Forearm frame: local -Y runs elbow -> hand, local +X (the palm side of
+  // handGeo, where the fingers curl) faces down onto the strings (-Z).
+  dF.normalize();
+  const fy = dF.clone().negate();
+  const fx = V(0, 0, -1).addScaledVector(dF, dF.z).normalize();
+  const fz = new THREE.Vector3().crossVectors(fx, fy);
+  const qF = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(fx, fy, fz));
   const qUc = new THREE.Quaternion().setFromUnitVectors(V(0, -1, 0), V(-0.42, 0.9, 0.14).normalize());
-  const upper = merge([puff(), sweep([V(0, 0, 0), V(0, -LU * 0.5, 0), V(0, -LU - 0.01, 0)], { segs: 10, radial: 10, r: (t) => lerp(0.046, 0.041, t), color: dress })]);
-  const foreCloth = merge([sweep([V(0, 0.01, 0), V(0, -LF * 0.6, 0)], { segs: 8, radial: 10, r: (t) => lerp(0.041, 0.036, t), color: dress, capEnd: false })]);
+  const upper = merge([puff(), sweep([V(0, 0, 0), V(0, -LU * 0.5, 0), V(0, -LU, 0)], { segs: 10, radial: 10, r: (t) => lerp(0.046, 0.041, t), color: dress, capEnd: false })]);
+  const foreCloth = merge([
+    ball(dress, [0, 0, 0], 0.042, [0, 0, 0], 14, 10), // elbow
+    sweep([V(0, 0, 0), V(0, -LF * 0.62, 0)], { segs: 8, radial: 10, r: (t) => lerp(0.041, 0.035, t), color: dress, capEnd: false, capStart: false }),
+  ]);
   const cuffR = new THREE.TorusGeometry(0.034, 0.008, 6, 16);
   cuffR.rotateX(Math.PI / 2);
   const foreSkin = merge([
-    paint(cuffR.translate(0, -LF * 0.6, 0), WHITE),
-    sweep([V(0, -LF * 0.6, 0), V(0, -LF + 0.01, 0)], { segs: 4, radial: 10, r: (t) => lerp(0.03, 0.026, t), color: skin }),
-    handGeo(0.06, skinC, 0.3).translate(0, -LF - 0.015, 0.004),
+    paint(cuffR.translate(0, -LF * 0.62, 0), WHITE),
+    sweep([V(0, -LF * 0.62, 0), V(0, -LF + 0.035, 0)], { segs: 4, radial: 10, r: (t) => lerp(0.03, 0.025, t), color: skin }),
+    handGeo(0.06, skinC, 0.45).translate(0, -LF, 0),
   ]);
 
   return {

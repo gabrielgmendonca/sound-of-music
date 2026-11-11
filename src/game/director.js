@@ -5,7 +5,10 @@ import * as THREE from 'three';
 import { NOTE_COLORS, STAGE, childX } from '../config.js';
 import { createMaria, createChild } from '../world/characters.js';
 
-const FOV = 42;
+// A wider lens in portrait pulls in more of the valley on a tall screen.
+const FOV_LANDSCAPE = 42;
+const FOV_PORTRAIT = 58;
+const RING_POOL = 10;
 const NOTE_POOL = 18;
 
 export class Director {
@@ -13,16 +16,12 @@ export class Director {
     this.scene = scene;
     this.camera = camera;
     this.env = env;
-    camera.fov = FOV;
 
     this.maria = createMaria();
     this.children = Array.from({ length: 7 }, (_, i) => createChild(i));
     this.cast = [this.maria, ...this.children];
     this.cast.forEach((c) => scene.add(c.group));
 
-    this.focusX = 0; // where the camera is drifting towards
-    this.focusTarget = 0;
-    this.punch = 0; // brief zoom kick on hits
     this.push = 0; // slow finale push-in
     this.pushTarget = 0;
     this.centerX = 0;
@@ -30,6 +29,7 @@ export class Director {
     this.t = 0;
 
     this._initNotes();
+    this._initRings();
     this.layout(camera.aspect);
   }
 
@@ -57,10 +57,12 @@ export class Director {
     const right = Math.max(...xs) + (portrait ? 0.55 : 0.8);
     this.centerX = (left + right) / 2;
     const halfW = (right - left) / 2;
-    const tanH = Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * aspect;
+    const fov = portrait ? FOV_PORTRAIT : FOV_LANDSCAPE;
+    this.camera.fov = fov;
+    this.camera.updateProjectionMatrix();
+    const tanH = Math.tan(THREE.MathUtils.degToRad(fov / 2)) * aspect;
     this.dist = Math.max(6.2, (halfW * 1.1) / tanH);
     this.portrait = portrait;
-    this.focusX = this.focusTarget = this.centerX;
   }
 
   // ── Conductor reactions ────────────────────────────────────────────────
@@ -84,8 +86,7 @@ export class Director {
     const strength = kind === 'perfect' ? 1 : 0.7;
     if (note.final) {
       this.cast.forEach((c) => { c.hop(1.2); c.sing(2.5); });
-      this.children.forEach((c, i) => this._emitNote(c, NOTE_COLORS[i]));
-      this.punch = 1;
+      this.children.forEach((c, i) => { this._emitNote(c, NOTE_COLORS[i]); this._emitRing(c, NOTE_COLORS[i], 1.3); });
       return;
     }
     const kid = this.children[note.step];
@@ -93,8 +94,8 @@ export class Director {
     kid.hop(strength);
     kid.sing(Math.min(note.len * 0.9, 1.2));
     this._emitNote(kid, NOTE_COLORS[note.step]);
-    this.focusTarget = this.centerX + (kid.group.position.x - this.centerX) * 0.08;
-    this.punch = Math.max(this.punch, strength * 0.6);
+    // The camera stays still; a ring of the note's colour ripples out on the grass.
+    this._emitRing(kid, NOTE_COLORS[note.step], strength);
   }
 
   onMiss(note) {
@@ -105,13 +106,11 @@ export class Director {
     this.env.celebrate();
     this.cast.forEach((c) => c.setMood('cheer'));
     this.pushTarget = 1;
-    this.focusTarget = this.centerX;
   }
 
   reset() {
     this.cast.forEach((c) => { c.setMood('idle'); c.lookAt(null, null, null); });
     this.pushTarget = 0;
-    this.focusTarget = this.centerX;
   }
 
   // ── Per-frame ──────────────────────────────────────────────────────────
@@ -121,22 +120,60 @@ export class Director {
     for (const c of this.cast) c.update(dt, t);
     this._updateNotes(dt);
 
-    const k = 1 - Math.exp(-dt * 2.2);
-    this.focusX += (this.focusTarget - this.focusX) * k;
+    this._updateRings(dt);
     this.push += (this.pushTarget - this.push) * (1 - Math.exp(-dt * 0.5));
-    this.punch *= Math.exp(-dt * 7);
 
-    const dist = this.dist * (1 - 0.12 * this.push) - this.punch * 0.25;
-    const swayX = Math.sin(t * 0.21) * 0.18;
-    const swayY = Math.sin(t * 0.33) * 0.06;
+    // No kicks or pans: just a very slow drift, and a gentle push-in at the end.
+    const dist = this.dist * (1 - 0.1 * this.push);
+    const swayX = Math.sin(t * 0.17) * 0.08;
+    const swayY = Math.sin(t * 0.23) * 0.03;
     const cam = this.camera;
-    // Low, nearly level camera: characters sit in the lower half, peaks and sky above.
     // Portrait sits higher and tilts down a touch so the cast lands in the
     // lower-middle of a tall screen, clear of the foreground grass.
     const camY = this.portrait ? 1.2 + dist * 0.12 : 1.25 + dist * 0.02;
     const lookY = this.portrait ? camY - dist * 0.05 : 1.15;
-    cam.position.set(this.focusX * 0.6 + this.centerX * 0.4 + swayX, camY + swayY, dist);
-    cam.lookAt(this.focusX, lookY, 0);
+    cam.position.set(this.centerX + swayX, camY + swayY, dist);
+    cam.lookAt(this.centerX, lookY, 0);
+  }
+
+  // ── Ground rings: the hit feedback ─────────────────────────────────────
+
+  _initRings() {
+    const geo = new THREE.RingGeometry(0.3, 0.4, 48);
+    geo.rotateX(-Math.PI / 2);
+    this.rings = [];
+    for (let i = 0; i < RING_POOL; i++) {
+      const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
+      const m = new THREE.Mesh(geo, mat);
+      m.visible = false;
+      m.renderOrder = 5;
+      this.scene.add(m);
+      this.rings.push({ mesh: m, life: 0, size: 1 });
+    }
+    this.ringIdx = 0;
+  }
+
+  _emitRing(character, color, strength) {
+    const r = this.rings[this.ringIdx];
+    this.ringIdx = (this.ringIdx + 1) % RING_POOL;
+    const p = character.group.position;
+    r.mesh.position.set(p.x, 0.04, p.z);
+    r.mesh.material.color.set(color);
+    r.mesh.visible = true;
+    r.life = 1;
+    r.size = 0.9 + strength * 0.7;
+  }
+
+  _updateRings(dt) {
+    for (const r of this.rings) {
+      if (r.life <= 0) continue;
+      r.life -= dt / 0.6;
+      if (r.life <= 0) { r.mesh.visible = false; continue; }
+      const age = 1 - r.life;
+      const s = 1 + (1 - (1 - age) ** 3) * 1.6 * r.size; // ease-out
+      r.mesh.scale.set(s, 1, s);
+      r.mesh.material.opacity = 0.85 * r.life * r.life;
+    }
   }
 
   // ── Floating music notes ───────────────────────────────────────────────
