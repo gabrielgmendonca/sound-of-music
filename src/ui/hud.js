@@ -86,9 +86,25 @@ const BADGES = {
 
 const CONFETTI_COLORS = ['#d9483b', '#f2b632', '#5fb760', '#3fa9d6', '#a45fd0', '#f28c38'];
 
-export function createHUD(root) {
+export function createHUD(root, text = {}) {
   root.classList.add('hud');
   root.innerHTML = TEMPLATE;
+  // Localised labels (see src/i18n.js); the template's English is the fallback.
+  const setText = (sel, value) => {
+    const el = root.querySelector(sel);
+    if (el && value) el.textContent = value;
+  };
+  setText('.hud__combo-t', text.combo);
+  setText('[data-ref="startBtn"]', text.start);
+  setText('.hud__hint', text.hint);
+  [text.statPerfect, text.statGood, text.statMiss, text.statCombo].forEach((v, i) => {
+    const b = root.querySelector('[data-ref="' + ['sPerfect', 'sGood', 'sMiss', 'sCombo'][i] + '"]');
+    if (b && v && b.nextElementSibling) b.nextElementSibling.textContent = v;
+  });
+  if (text.replay) {
+    const btn = root.querySelector('[data-ref="replayBtn"]');
+    if (btn && btn.lastChild && btn.lastChild.nodeType === 3) btn.lastChild.textContent = text.replay;
+  }
 
   const r = {};
   root.querySelectorAll('[data-ref]').forEach((el) => {
@@ -265,7 +281,7 @@ export function createHUD(root) {
     pops.push({ el, main, sub, anim: null });
   }
   let popIdx = 0;
-  const JUDGE_TEXT = { perfect: 'Perfect!', good: 'Good', miss: 'Oops' };
+  const JUDGE_TEXT = { perfect: text.perfect || 'Perfect!', good: text.good || 'Good', miss: text.miss || 'Oops' };
   function showJudgment(kind, opts) {
     const o = opts || {};
     const p = pops[popIdx];
@@ -544,7 +560,7 @@ export function createHUD(root) {
     r.sGood.textContent = o.good | 0;
     r.sMiss.textContent = o.miss | 0;
     r.sCombo.textContent = o.maxCombo | 0;
-    r.dear.textContent = o.recipient ? 'Dear ' + o.recipient + ',' : '';
+    r.dear.textContent = o.salutation || (o.recipient ? 'Dear ' + o.recipient + ',' : '');
     r.msg.textContent = o.message == null ? '' : String(o.message);
     r.sig.textContent = o.signature == null ? '' : String(o.signature);
     replayHandler = typeof o.onReplay === 'function' ? o.onReplay : null;

@@ -15,6 +15,8 @@ const BUSES = {
   voice: { trim: 0.62, send: 0.3 },
   kids: { trim: 0.6, send: 0.3 },
   guitar: { trim: 0.55, send: 0.18 },
+  guitarMute: { trim: 0.55, send: 0.08 }, // palm-muted "chk"; shares the guitar body
+  accordion: { trim: 0.5, send: 0.32 },
   bass: { trim: 0.55, send: 0.05 },
   bell: { trim: 0.45, send: 0.35 },
   flute: { trim: 0.6, send: 0.35 },
@@ -32,7 +34,8 @@ class Rec {
   }
   osc(type, freq, t0, t1) {
     const o = this.ctx.createOscillator();
-    o.type = type;
+    if (typeof type === 'string') o.type = type;
+    else o.setPeriodicWave(type);
     o.frequency.value = freq;
     o.start(t0);
     o.stop(t1);
@@ -114,6 +117,180 @@ function envelope(p, t, dur, peak, a, d, s, r) {
   return t + dur + r;
 }
 
+
+// ---- plucked-string synthesis (offline, into Float32Array) ------------------
+
+// Phase delay (samples) at angular freq w of the first-order all-pass
+// (eta + z^-1) / (1 + eta z^-1).
+function allpassDelay(eta, w) {
+  const ph = Math.atan2(-Math.sin(w), eta + Math.cos(w)) - Math.atan2(-eta * Math.sin(w), 1 + eta * Math.cos(w));
+  return -ph / w;
+}
+
+// One damped, fractionally tuned string loop (one polarisation).
+function makeLoop(sr, f, fcRatio, fcMin, t60) {
+  const w = (2 * Math.PI * f) / sr;
+  const fc = clamp(f * fcRatio, fcMin, sr * 0.4);
+  const c = 1 - Math.exp((-2 * Math.PI * fc) / sr);
+  // one-pole loop low-pass y += c (x - y): magnitude and phase delay at f
+  const re = 1 - (1 - c) * Math.cos(w);
+  const im = (1 - c) * Math.sin(w);
+  const mag = c / Math.hypot(re, im);
+  const pdLp = Math.atan2(im, re) / w;
+  const gPer = Math.pow(10, -3 / (t60 * f)); // 60 dB over t60 at the fundamental
+  const g = Math.min(0.9995, gPer / mag);
+  const rem = sr / f - pdLp;
+  const N = Math.max(4, Math.floor(rem - 0.5));
+  const dap = rem - N; // in [0.5, 1.5) unless clamped
+  let lo = -0.95,
+    hi = 0.95;
+  for (let i = 0; i < 24; i++) {
+    const mid = 0.5 * (lo + hi);
+    if (allpassDelay(mid, w) > dap) lo = mid;
+    else hi = mid;
+  }
+  return { N, buf: new Float32Array(N), c, g, eta: 0.5 * (lo + hi) };
+}
+
+// Renders a plucked string to a Float32Array. o = {
+//  len (s), cents, pol (cents), polMix, bright (exc. low-pass coeff), pick (0..1 of string),
+//  fcRatio, fcMin, t60, tAlpha, tTau, tAmp, target (rms over first win s), win }
+function renderString(sr, midi, o) {
+  const total = Math.floor(sr * o.len);
+  const out = new Float32Array(total);
+  const f0 = midiToHz(midi) * Math.pow(2, o.cents / 1200);
+  const A = makeLoop(sr, f0 * Math.pow(2, o.pol / 1200), o.fcRatio, o.fcMin, o.t60);
+  const B = makeLoop(sr, f0 * Math.pow(2, -o.pol / 1200), o.fcRatio * 0.9, o.fcMin, o.t60 * 0.8);
+
+  // Excitation: windowed noise, velocity-dependent low-pass, pick-position comb.
+  const N = A.N;
+  const e = new Float32Array(N);
+  for (let i = 0; i < N; i++) e[i] = (Math.random() * 2 - 1) * Math.pow(Math.sin((Math.PI * (i + 0.5)) / N), 0.6);
+  const smooth = (arr, a) => {
+    let y = 0;
+    for (let i = 0; i < arr.length; i++) {
+      y += a * (arr[i] - y);
+      arr[i] = y;
+    }
+  };
+  smooth(e, o.bright);
+  smooth(e, o.bright);
+  let mean = 0;
+  for (let i = 0; i < N; i++) mean += e[i];
+  mean /= N;
+  const p = Math.max(1, Math.round(N * o.pick));
+  const ea = A.buf;
+  for (let i = 0; i < N; i++) ea[i] = e[i] - mean - 0.85 * (e[(i + p) % N] - mean);
+  // second polarisation: other length, darker, weaker, different pick
+  const NB = B.N;
+  const pb = Math.max(1, Math.round(NB * (o.pick * 1.15)));
+  const eb = B.buf;
+  for (let i = 0; i < NB; i++) {
+    const k = (i * N) / NB;
+    const i0 = Math.floor(k);
+    const v = e[i0 % N] * (1 - (k - i0)) + e[(i0 + 1) % N] * (k - i0);
+    eb[i] = v - mean;
+  }
+  smooth(eb, 0.5);
+  for (let i = 0; i < NB; i++) eb[i] = (eb[i] - 0.6 * eb[(i + pb) % NB]) * o.polMix;
+
+  // string loops
+  {
+    const a = A.buf,
+      b = B.buf;
+    const aN = A.N,
+      bN = B.N;
+    const ac = A.c,
+      ag = A.g,
+      ae = A.eta,
+      bc = B.c,
+      bg = B.g,
+      be = B.eta;
+    let ia = 0,
+      ib = 0,
+      alp = 0,
+      ax = 0,
+      ay = 0,
+      blp = 0,
+      bx = 0,
+      by = 0;
+    for (let n = 0; n < total; n++) {
+      const sa = a[ia];
+      const sb = b[ib];
+      out[n] = sa + sb;
+      alp += ac * (sa - alp);
+      const ya = ae * alp + ax - ae * ay;
+      ax = alp;
+      ay = ya;
+      a[ia] = ya * ag;
+      if (++ia === aN) ia = 0;
+      blp += bc * (sb - blp);
+      const yb = be * blp + bx - be * by;
+      bx = blp;
+      by = yb;
+      b[ib] = yb * bg;
+      if (++ib === bN) ib = 0;
+    }
+  }
+
+  // Finger / palm attack transient (soft noise thump, no click).
+  const tn = Math.floor(sr * Math.min(0.05, o.len));
+  const tr = new Float32Array(tn);
+  let l1 = 0,
+    l2 = 0,
+    e2 = 0;
+  for (let i = 0; i < tn; i++) {
+    const t = i / sr;
+    l1 += o.tAlpha * (Math.random() * 2 - 1 - l1);
+    l2 += o.tAlpha * (l1 - l2);
+    const v = l2 * (1 - Math.exp(-t / 0.0007)) * Math.exp(-t / o.tTau);
+    tr[i] = v;
+    e2 += v * v;
+  }
+  const w20 = Math.floor(sr * 0.02);
+  let s20 = 0;
+  for (let i = 0; i < w20; i++) s20 += out[i] * out[i];
+  const k20 = Math.sqrt(s20 / w20);
+  const trRms = Math.sqrt(e2 / Math.max(1, Math.min(tn, w20)));
+  const tk = trRms > 0 ? (o.tAmp * k20) / trRms : 0;
+  for (let i = 0; i < tn; i++) out[i] += tr[i] * tk;
+
+  // normalise by RMS over the first window, cap peak, fade tail
+  const wn = Math.min(total, Math.floor(sr * o.win));
+  // (measured through a ~1.5 kHz low-pass so bright and dark layers sound equally loud)
+  const wc = 1 - Math.exp((-2 * Math.PI * 1500) / sr);
+  let ss = 0,
+    wl = 0;
+  for (let i = 0; i < wn; i++) {
+    wl += wc * (out[i] - wl);
+    ss += wl * wl;
+  }
+  let k = ss > 0 ? o.target / Math.sqrt(ss / wn) : 1;
+  let pk = 0;
+  for (let i = 0; i < total; i++) pk = Math.max(pk, Math.abs(out[i]));
+  if (pk * k > 0.9) k = 0.9 / pk;
+  const fade = Math.floor(sr * 0.06);
+  for (let i = 0; i < total; i++) {
+    let v = out[i] * k;
+    if (i > total - fade) v *= (total - i) / fade;
+    out[i] = v;
+  }
+  return out;
+}
+
+// Guitar body resonances (centre Hz, Q, gain) mixed in parallel with the dry string.
+const BODY_MODES = [
+  [96, 7, 1.7], // air (Helmholtz)
+  [190, 6, 2.0], // top plate
+  [285, 8, 1.0],
+  [405, 9, 0.8],
+  [520, 9, 0.6],
+  [700, 8, 0.55],
+  [1080, 8, 0.5],
+  [1650, 7, 0.4],
+  [2450, 6, 0.3],
+];
+
 // Formant sets (centre Hz, Q, gain).
 const VOWEL_AH = [
   [800, 6, 1.0],
@@ -135,6 +312,9 @@ export class AudioEngine {
     this._buses = null;
     this._noise = null;
     this._pluckCache = new Map();
+    this._pluckCount = 0;
+    this._gtrIn = null;
+    this._reed = null;
   }
 
   get ctx() {
@@ -300,6 +480,45 @@ export class AudioEngine {
       send.connect(conv);
       this._buses[name] = input;
     }
+
+    // Shared guitar body: dry string + parallel resonators -> guitar bus.
+    const gin = ctx.createGain();
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 62;
+    hp.Q.value = 0.6;
+    const sum = ctx.createGain();
+    sum.gain.value = 1;
+    const dry = ctx.createGain();
+    dry.gain.value = 0.55;
+    gin.connect(hp);
+    hp.connect(dry);
+    dry.connect(sum);
+    for (const [fc, q, g] of BODY_MODES) {
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = fc;
+      bp.Q.value = q;
+      const bg = ctx.createGain();
+      bg.gain.value = g;
+      hp.connect(bp);
+      bp.connect(bg);
+      bg.connect(sum);
+    }
+    const top = ctx.createBiquadFilter(); // nylon is soft on top
+    top.type = 'lowpass';
+    top.frequency.value = 6500;
+    top.Q.value = 0.5;
+    sum.connect(top);
+    top.connect(this._buses.guitar);
+    this._gtrIn = gin;
+
+    // Reed-like wave for the accordion: odd-heavy, 1/k roll-off.
+    const H = 28;
+    const re = new Float32Array(H + 1);
+    const im = new Float32Array(H + 1);
+    for (let k = 1; k <= H; k++) im[k] = (1 / k) * (k % 2 === 0 ? 0.55 : 1);
+    this._reed = ctx.createPeriodicWave(re, im);
   }
 
   _ready() {
@@ -323,8 +542,9 @@ export class AudioEngine {
     const dur = clamp(Number.isFinite(duration) ? duration : 0.5, 0.05, 6);
     const vel = clamp(Number.isFinite(velocity) ? velocity : 1, 0, 1.5);
     if (vel <= 0) return;
-    const out = this._buses[instrument];
+    let out = this._buses[instrument];
     if (!out) return;
+    if (instrument === 'guitar' || instrument === 'guitarMute') out = this._gtrIn;
     const f = midiToHz(midi);
     try {
       switch (instrument) {
@@ -336,7 +556,7 @@ export class AudioEngine {
             attack: 0.05,
             release: 0.14,
             vibrato: 18,
-            breath: 0,
+            breath: 0.035,
             direct: 0.16,
           });
         case 'kids':
@@ -351,7 +571,11 @@ export class AudioEngine {
             direct: 0.1,
           });
         case 'guitar':
-          return this._guitar(out, midi, t, dur, vel);
+          return this._guitar(out, midi, t, dur, vel, false);
+        case 'guitarMute':
+          return this._guitar(out, midi, t, dur, vel, true);
+        case 'accordion':
+          return this._accordion(out, f, t, dur, vel);
         case 'bass':
           return this._bass(out, f, t, dur, vel);
         case 'bell':
@@ -404,7 +628,7 @@ export class AudioEngine {
     const oscs = [];
     for (const sgn of [-1, 1]) {
       const osc = r.osc('sawtooth', f, t, end);
-      osc.detune.value = sgn * o.detune;
+      osc.detune.value = sgn * o.detune + (Math.random() - 0.5) * 6;
       // small "scoop" up into the pitch, as singers do
       osc.frequency.setValueAtTime(f * 0.975, t);
       osc.frequency.exponentialRampToValueAtTime(f, t + 0.07);
@@ -449,112 +673,214 @@ export class AudioEngine {
     return peakEnd;
   }
 
-  // Karplus-Strong pluck buffer (cached per midi note).
-  _pluck(midi) {
-    const hit = this._pluckCache.get(midi);
-    if (hit) return hit;
-    const ctx = this._ctx;
-    const sr = ctx.sampleRate;
-    const f = midiToHz(midi);
-    const N = Math.max(2, Math.round(sr / f - 0.5)); // 2-point average => period N + 0.5
-    const total = Math.floor(sr * 1.9);
-    const buf = ctx.createBuffer(1, total, sr);
-    const d = buf.getChannelData(0);
-
-    // Deterministic excitation (so every pluck of a pitch sounds the same).
-    let seed = 1234567 + midi * 7919;
-    const rnd = () => {
-      seed = (seed * 1664525 + 1013904223) >>> 0;
-      return seed / 4294967296 * 2 - 1;
-    };
-    const exc = new Float32Array(N);
-    for (let i = 0; i < N; i++) exc[i] = rnd();
-    // dull it for nylon (two one-pole passes), then pick-position comb
-    for (let pass = 0; pass < 2; pass++) {
-      let y = 0;
-      for (let i = 0; i < N; i++) {
-        y += 0.45 * (exc[i] - y);
-        exc[i] = y;
-      }
+  // Renders one pluck variant. layer 0 = soft, 1 = hard, 2 = palm mute.
+  _renderPluck(midi, layer) {
+    const sr = this._ctx.sampleRate;
+    const pos = clamp((midi - 36) / 48, 0, 1);
+    if (layer === 2) {
+      return renderString(sr, midi, {
+        len: 0.32,
+        cents: (Math.random() - 0.5) * 6,
+        pol: 1.5,
+        polMix: 0.3,
+        bright: 0.3,
+        pick: 0.14 + Math.random() * 0.05,
+        fcRatio: 3.2,
+        fcMin: 500,
+        t60: 0.16,
+        tAlpha: 0.1,
+        tTau: 0.012,
+        tAmp: 1.1,
+        target: 0.12,
+        win: 0.08,
+      });
     }
-    const pp = Math.max(1, Math.floor(N * 0.17));
-    for (let i = 0; i < N; i++) d[i] = exc[i] - 0.6 * exc[(i + pp) % N];
-
-    const t60 = lerp(2.3, 1.0, clamp((midi - 36) / 48, 0, 1));
-    const g = Math.min(0.9998, Math.exp(-6.9 / (t60 * f)));
-    d[N] = g * 0.5 * d[0];
-    for (let i = N + 1; i < total; i++) d[i] = g * 0.5 * (d[i - N] + d[i - N - 1]);
-
-    let peak = 0;
-    for (let i = 0; i < total; i++) peak = Math.max(peak, Math.abs(d[i]));
-    const norm = peak > 0 ? 0.85 / peak : 1;
-    const tail = Math.floor(sr * 0.08);
-    for (let i = 0; i < total; i++) {
-      let v = d[i] * norm;
-      if (i > total - tail) v *= (total - i) / tail;
-      d[i] = v;
-    }
-    const entry = { buf, rate: f / (sr / (N + 0.5)) };
-    this._pluckCache.set(midi, entry);
-    return entry;
+    const hard = layer === 1;
+    return renderString(sr, midi, {
+      len: lerp(2.9, 1.9, pos),
+      cents: (Math.random() - 0.5) * 5,
+      pol: 0.9 + Math.random() * 0.8,
+      polMix: 0.4 + Math.random() * 0.15,
+      bright: hard ? 0.7 : 0.2,
+      pick: 0.15 + Math.random() * 0.05, // ~1/6.5 .. 1/5 of the string
+      fcRatio: hard ? 16 : 8,
+      fcMin: hard ? 1800 : 1100,
+      t60: lerp(3.8, 2.6, pos) * (0.92 + Math.random() * 0.16),
+      tAlpha: hard ? 0.3 : 0.12,
+      tTau: hard ? 0.005 : 0.008,
+      tAmp: hard ? 0.7 : 0.55,
+      target: 0.12,
+      win: 0.5,
+    });
   }
 
-  _guitar(out, midi, t, dur, vel) {
+  // Round-robin pluck buffer, rendered lazily and cached (LRU, bounded memory).
+  _pluckBuf(midi, layer) {
+    const VAR = 3;
+    const key = layer * 1000 + midi;
+    let ent = this._pluckCache.get(key);
+    if (ent) {
+      this._pluckCache.delete(key); // refresh LRU position
+    } else {
+      ent = { v: [], last: -1 };
+    }
+    this._pluckCache.set(key, ent);
+    let i;
+    do i = Math.floor(Math.random() * VAR);
+    while (i === ent.last);
+    if (!ent.v[i]) {
+      const d = this._renderPluck(midi, layer);
+      const buf = this._ctx.createBuffer(1, d.length, this._ctx.sampleRate);
+      buf.getChannelData(0).set(d);
+      ent.v[i] = buf;
+      this._pluckCount++;
+      for (const [k, e] of this._pluckCache) {
+        if (this._pluckCount <= 150) break;
+        if (k === key) continue;
+        this._pluckCount -= e.v.filter(Boolean).length;
+        this._pluckCache.delete(k);
+      }
+    }
+    ent.last = i;
+    return ent.v[i];
+  }
+
+  // Nylon-string guitar (and palm-muted "chk" when mute is true).
+  _guitar(out, midi, t, dur, vel, mute) {
     const ctx = this._ctx;
     const r = new Rec(ctx, this._noise);
-    const { buf, rate } = this._pluck(midi);
-    const ring = clamp(dur + 0.15, 0.4, 1.8);
-    const rel = 0.18;
-    const end = t + ring + rel + 0.03;
+    const layer = mute ? 2 : vel < 0.6 ? 0 : 1;
+    const buf = this._pluckBuf(midi, layer);
+    const bd = buf.duration;
+    const v = clamp(vel / 1.2, 0, 1);
 
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    src.playbackRate.value = rate;
     src.start(t);
-    src.stop(Math.min(end, t + buf.duration / rate));
     r.sources.push(src);
     r.nodes.push(src);
 
-    const body = r.filter('peaking', 210, 1.2, 4);
-    const lp = r.filter('lowpass', 3200, 0.6);
+    // brightness follows velocity (on top of the soft/hard excitation layers)
+    const lp = r.filter('lowpass', (mute ? 1400 : 650 + 7500 * Math.pow(v, 1.3)) * (0.92 + Math.random() * 0.16), 0.5);
     const env = r.gain(0);
-    const peak = 0.75 * vel;
-    env.gain.setValueAtTime(0, t);
-    env.gain.linearRampToValueAtTime(peak, t + 0.003);
-    env.gain.setValueAtTime(peak, t + ring);
-    env.gain.linearRampToValueAtTime(0, t + ring + rel);
-    r.chain(src, body, lp, env, out);
+    const peak = (mute ? 0.75 : 1.2) * Math.pow(vel, 1.2) * (0.93 + Math.random() * 0.14);
+    env.gain.setValueAtTime(peak, t);
+
+    // How long the string is allowed to ring before a hand damps it.
+    const sound = mute ? bd : Math.max(dur, 0.35);
+    let stopAt = t + bd;
+    if (!mute && sound < bd - 0.45) {
+      const te = t + sound;
+      env.gain.setTargetAtTime(0, te, 0.045);
+      lp.frequency.setTargetAtTime(220, te, 0.06);
+      stopAt = te + 0.35;
+    }
+    src.stop(stopAt);
+    r.chain(src, lp, env, out);
     r.finish();
   }
 
+  // Plucked upright: partials with individual woody decays + finger thump.
   _bass(out, f, t, dur, vel) {
     const r = new Rec(this._ctx, this._noise);
-    const rel = 0.12;
-    const end = t + dur + rel + 0.04;
+    const sound = Math.max(dur, 0.3);
+    const rel = 0.14;
+    const end = t + sound + rel + 0.05;
+    const dk = clamp(120 / f, 0.7, 1.5); // low strings ring longer
+    const low = f < 110 ? 0.55 : 1; // phone speakers: lean on harmonics for low notes
+    const master = r.gain(0.34 * Math.pow(vel, 1.1));
+    const lp = r.filter('lowpass', 1500 + 1500 * vel, 0.7);
+    lp.frequency.setValueAtTime(1500 + 1800 * vel, t);
+    lp.frequency.setTargetAtTime(700, t, 0.18);
+    const env = r.gain(1);
+    env.gain.setValueAtTime(1, t + sound);
+    env.gain.setTargetAtTime(0, t + sound, rel / 3);
+    // [harmonic, amp, decay tau]
+    const parts = [
+      [1, 0.8 * low, 0.5],
+      [2, 1.0, 0.34],
+      [3, 0.7, 0.22],
+      [4, 0.42, 0.15],
+      [5, 0.24, 0.1],
+      [6, 0.12, 0.07],
+    ];
+    const sk = (Math.random() - 0.5) * 0.05;
+    for (const [h, a, tau] of parts) {
+      const pf = f * h * (1 + sk * 0.01 * h * h); // slight stiffness
+      if (pf > 9000) continue;
+      const o = r.osc('sine', pf, t, end);
+      o.frequency.setValueAtTime(pf * 1.01, t); // string-tension glide after the pluck
+      o.frequency.exponentialRampToValueAtTime(pf, t + 0.07);
+      o.detune.value = (Math.random() - 0.5) * 6;
+      const g = r.gain(0);
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(a, t + 0.004);
+      g.gain.setTargetAtTime(a * 0.12, t + 0.004, tau * dk);
+      r.chain(o, g, master);
+    }
+    r.chain(master, lp, env, out);
+    // thumb/finger: low thump + woody snap
+    const n1 = r.noise(t, t + 0.08);
+    const b1 = r.filter('bandpass', 170, 1.4);
+    const g1 = r.gain(0);
+    g1.gain.setValueAtTime(0, t);
+    g1.gain.linearRampToValueAtTime(0.22 * vel, t + 0.004);
+    g1.gain.linearRampToValueAtTime(0, t + 0.06);
+    r.chain(n1, b1, g1, master);
+    const n2 = r.noise(t, t + 0.04);
+    const b2 = r.filter('bandpass', 1300, 1.6);
+    const g2 = r.gain(0);
+    g2.gain.setValueAtTime(0, t);
+    g2.gain.linearRampToValueAtTime(0.1 * vel, t + 0.002);
+    g2.gain.linearRampToValueAtTime(0, t + 0.02);
+    r.chain(n2, b2, g2, master);
+    r.finish();
+  }
+
+  // Harmonium / Alpine accordion: three detuned reeds + octave-down, bellows swell.
+  _accordion(out, f, t, dur, vel) {
+    const r = new Rec(this._ctx, this._noise);
+    const att = 0.09 + Math.random() * 0.05;
+    const rel = 0.3;
+    const end = t + dur + rel + 0.05;
     const env = r.gain(0);
-    envelope(env.gain, t, dur, 0.8 * vel, 0.012, 0.25, 0.6, rel);
+    const pk = 0.075 * Math.pow(vel, 0.9);
+    env.gain.setValueAtTime(0, t);
+    env.gain.linearRampToValueAtTime(pk * 0.35, t + att * 0.5);
+    env.gain.linearRampToValueAtTime(pk, t + att);
+    const hold = Math.max(t + att, t + dur);
+    env.gain.setValueAtTime(pk, hold);
+    env.gain.linearRampToValueAtTime(0, hold + rel);
 
-    const lp = r.filter('lowpass', 900, 0.8);
-    lp.frequency.setValueAtTime(900, t);
-    lp.frequency.exponentialRampToValueAtTime(280, t + 0.3);
-
-    const o1 = r.osc('triangle', f, t, end);
-    const o2 = r.osc('sine', f * 2, t, end);
-    const g2 = r.gain(0.3);
-    o1.connect(lp);
-    o2.connect(g2);
-    g2.connect(lp);
-
-    // finger thump
-    const n = r.noise(t, t + 0.06);
-    const nbp = r.filter('bandpass', 260, 1.2);
-    const ng = r.gain(0);
-    ng.gain.setValueAtTime(0, t);
-    ng.gain.linearRampToValueAtTime(0.18 * vel, t + 0.004);
-    ng.gain.linearRampToValueAtTime(0, t + 0.05);
-    r.chain(n, nbp, ng, lp);
-
-    r.chain(lp, env, out);
+    const fc = clamp(f * 4.2, 700, 2800);
+    const lp = r.filter('lowpass', fc, 0.6);
+    lp.frequency.setValueAtTime(fc * 0.45, t);
+    lp.frequency.linearRampToValueAtTime(fc, t + att * 1.3);
+    // gentle reed-box warmth
+    const warm = r.filter('peaking', 900, 0.8, 2.5);
+    const mix = r.gain(1);
+    // musette tuning: beats of ~1.2 and ~2.2 Hz regardless of register
+    const cents = (hz) => clamp(1200 * Math.log2(1 + hz / f), 2, 16);
+    const reeds = [
+      [0, 0.8],
+      [cents(1.3) * (0.8 + Math.random() * 0.4), 0.6],
+      [-cents(2.2) * (0.8 + Math.random() * 0.4), 0.6],
+    ];
+    for (const [c, a] of reeds) {
+      const o = r.osc(this._reed, f, t, end);
+      o.detune.value = c;
+      const g = r.gain(a);
+      r.chain(o, g, mix);
+    }
+    const sub = r.osc('sine', f * 0.5, t, end);
+    const sg = r.gain(0.25);
+    r.chain(sub, sg, mix);
+    // slow bellows pressure wobble
+    const lfo = r.osc('sine', 0.25 + Math.random() * 0.15, t, end);
+    const lg = r.gain(pk * 0.05);
+    lfo.connect(lg);
+    lg.connect(env.gain);
+    r.chain(mix, lp, warm, env, out);
     r.finish();
   }
 

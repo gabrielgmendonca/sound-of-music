@@ -3,13 +3,13 @@
 
 export const GIFT = {
   // Shown on the title screen.
-  title: 'Do-Re-Mi Meadow',
-  subtitle: 'Supresa musical de aniversário',
-  // Shown on the final card after the song. Edit freely.
-  recipient: 'querida',
+  title: 'Dó-Ré-Mi na Colina',
+  subtitle: 'Uma surpresinha musical de aniversário',
+  // The card shown after the song. Edit freely — e.g. salutation: 'Ana, meu amor,'
+  salutation: 'Meu amor,',
   message:
-    'Feliz aniversário! Aqui está um coral só pra você.',
-  signature: 'Te amo',
+    'Feliz aniversário! Você enche os meus dias de música — aqui vão uma colina, uma canção e sete vozinhas cantando só para você.',
+  signature: 'Com todo o meu amor',
 };
 
 export const GAME = {
@@ -23,11 +23,8 @@ export const GAME = {
   inputOffset: 0,
 };
 
-// Solfège steps. Index 0..6 = Do..Ti; each one belongs to one child.
-// Child 0 is the eldest/tallest, child 6 the youngest/smallest.
-export const SOLFEGE = ['Do', 'Re', 'Mi', 'Fa', 'So', 'La', 'Ti'];
-
-// One colour per solfège step, shared by the HUD cues and each child's
+// One colour per solfège step (index 0..6 = Dó..Si; child 0 is the eldest,
+// child 6 the youngest), shared by the HUD cues and each child's
 // accent (ribbon / scarf / glow). Soft storybook rainbow.
 export const NOTE_COLORS = [
   '#e8504a', // Do  – poppy red

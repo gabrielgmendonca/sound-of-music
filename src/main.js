@@ -8,6 +8,7 @@ import { Conductor } from './game/conductor.js';
 import { Director } from './game/director.js';
 import { createEnvironment } from './world/environment.js';
 import { createHUD } from './ui/hud.js';
+import { strings, pickLocale } from './i18n.js';
 
 const canvas = document.getElementById('scene');
 const lowPower =
@@ -25,11 +26,13 @@ const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 600);
 
 const env = createEnvironment(scene, { lowPower });
 const director = new Director(scene, camera, env);
-const hud = createHUD(document.getElementById('hud'));
+const text = strings();
+document.documentElement.lang = pickLocale();
+document.title = GIFT.title;
+const hud = createHUD(document.getElementById('hud'), text);
 const audio = new AudioEngine();
-const chart = buildChart();
+const chart = buildChart(text);
 
-const RANK_LABELS = { superb: 'Superb!', ok: 'Lovely!', try: 'Encore!' };
 let state = 'title';
 
 const conductor = new Conductor(audio, chart, {
@@ -59,13 +62,13 @@ const conductor = new Conductor(audio, chart, {
     hud.setVisible(false);
     hud.showResults({
       rank: r.rank,
-      rankLabel: RANK_LABELS[r.rank],
+      rankLabel: text.ranks[r.rank],
       perfect: r.perfect,
       good: r.good,
       miss: r.miss,
       maxCombo: r.maxCombo,
       total: r.total,
-      recipient: GIFT.recipient,
+      salutation: GIFT.salutation,
       message: GIFT.message,
       signature: GIFT.signature,
       onReplay: startGame,
